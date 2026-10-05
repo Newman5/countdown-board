@@ -79,5 +79,14 @@ test('previewEvent reports the source and local interpretations before saving', 
 
   assert.equal(preview.title, 'Open Space');
   assert.equal(preview.source, '14:30 UTC');
-  assert.match(preview.countdown, /Starts in/);
+  assert.match(preview.countdown, /^Starts in \d+ day/);
+
+  const pastPreview = previewEvent({
+    title: 'Past Event',
+    date: '2000-01-01',
+    time: '00:00',
+    timezone: 'UTC'
+  });
+
+  assert.equal(pastPreview.countdown, 'Past event');
 });

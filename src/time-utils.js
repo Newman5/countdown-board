@@ -28,10 +28,39 @@ export function createUniqueId() {
 
 export function formatInputDate(dateValue) {
   const date = new Date(dateValue);
-  const year = String(date.getFullYear());
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const year = String(date.getUTCFullYear());
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+export function formatDateTimeInTimeZone(dateValue, timeZone = 'UTC') {
+  const date = new Date(dateValue);
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+
+  const parts = formatter.formatToParts(date);
+  const values = {};
+  for (const part of parts) {
+    if (part.type !== 'literal' && part.type !== 'timeZoneName') {
+      values[part.type] = part.value;
+    }
+  }
+
+  const year = values.year ?? '1970';
+  const month = values.month ?? '01';
+  const day = values.day ?? '01';
+  const hour = values.hour ?? '00';
+  const minute = values.minute ?? '00';
+
+  return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
 export function formatInputTime(dateValue, timeZone = 'UTC') {
@@ -69,16 +98,19 @@ export function getTimeZoneOffsetMinutes(date, timeZone) {
     }
   }
 
-  const candidates = [
-    Number(values.year),
-    Number(values.month) - 1,
-    Number(values.day),
-    Number(values.hour),
-    Number(values.minute),
-    Number(values.second)
-  ];
+  let day = Number(values.day);
+  let hour = Number(values.hour);
+  const minute = Number(values.minute);
+  const second = Number(values.second);
+  const year = Number(values.year);
+  const month = Number(values.month) - 1;
 
-  const zoneTime = Date.UTC(...candidates);
+  if (hour === 24) {
+    hour = 0;
+    day += 1;
+  }
+
+  const zoneTime = new Date(Date.UTC(year, month, day, hour, minute, second)).getTime();
   return (zoneTime - date.getTime()) / 60000;
 }
 
@@ -112,12 +144,11 @@ export function formatCountdown(ms) {
 }
 
 export function formatCountdownText(ms) {
-  const totalMs = Math.max(0, ms);
-  const { days, hours } = formatCountdown(totalMs);
-
   if (ms <= 0) {
     return 'Past event';
   }
+
+  const { days, hours } = formatCountdown(ms);
 
   if (days > 0) {
     return `${days} day${days === 1 ? '' : 's'}, ${hours} hour${hours === 1 ? '' : 's'}`;
@@ -127,12 +158,11 @@ export function formatCountdownText(ms) {
 }
 
 export function formatCountdownParts(ms) {
-  const totalMs = Math.max(0, ms);
-  const { days, hours } = formatCountdown(totalMs);
-
   if (ms <= 0) {
-    return { primary: 'Past', primaryLabel: '', secondary: '', secondaryLabel: '' };
+    return { primary: 'Past', primaryLabel: 'EVENT', secondary: '', secondaryLabel: '' };
   }
+
+  const { days, hours } = formatCountdown(ms);
 
   return {
     primary: String(days),
@@ -181,9 +211,9 @@ export function formatLocalTime(date) {
 
 export function formatDateInputValue(date) {
   const d = new Date(date);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -202,19 +232,24 @@ export function formatTimeInputValue(date, timeZone) {
 }
 
 function buildSeedInstant(daysFromNow, hoursFromNow = 0) {
-  return new Date(Date.now() + daysFromNow * DAY_MS + hoursFromNow * HOUR_MS).toISOString();
+  return new Date(Date.now() + daysFromNow * DAY_MS + hoursFromNow * HOUR_MS);
 }
 
 export function createSeedEvents() {
   const browserZone = getBrowserTimeZone();
 
+  const openSpace = buildSeedInstant(3, 6);
+  const travel = buildSeedInstant(9, 4);
+  const deadline = buildSeedInstant(18, 12);
+  const pastMilestone = buildSeedInstant(-2, 1);
+
   return [
     {
       id: 'seed-gimbalabs-open-space',
       title: 'Gimbalabs Open Space',
-      startsAt: buildSeedInstant(3, 6),
+      startsAt: openSpace.toISOString(),
       timezone: 'UTC',
-      originalTime: '2026-10-08T14:30',
+      originalTime: formatDateTimeInTimeZone(openSpace, 'UTC').slice(0, 16),
       category: 'Gimbalabs',
       url: '',
       notes: 'Community meetup and project updates.'
@@ -222,9 +257,9 @@ export function createSeedEvents() {
     {
       id: 'seed-travel-flight',
       title: 'Flight to Taipei',
-      startsAt: buildSeedInstant(9, 4),
+      startsAt: travel.toISOString(),
       timezone: 'Asia/Taipei',
-      originalTime: '2026-10-18T11:00',
+      originalTime: formatDateTimeInTimeZone(travel, 'Asia/Taipei').slice(0, 16),
       category: 'Travel',
       url: '',
       notes: 'Check in early and review travel docs.'
@@ -232,9 +267,9 @@ export function createSeedEvents() {
     {
       id: 'seed-deadline',
       title: 'Project proposal due',
-      startsAt: buildSeedInstant(18, 12),
+      startsAt: deadline.toISOString(),
       timezone: browserZone,
-      originalTime: '2026-10-28T17:00',
+      originalTime: formatDateTimeInTimeZone(deadline, browserZone).slice(0, 16),
       category: 'Deadlines',
       url: '',
       notes: 'Send final draft to the team.'
@@ -242,9 +277,9 @@ export function createSeedEvents() {
     {
       id: 'seed-past',
       title: 'Past milestone',
-      startsAt: buildSeedInstant(-2, 1),
+      startsAt: pastMilestone.toISOString(),
       timezone: 'UTC',
-      originalTime: '2026-10-03T09:00',
+      originalTime: formatDateTimeInTimeZone(pastMilestone, 'UTC').slice(0, 16),
       category: 'Personal',
       url: '',
       notes: 'This one should sit in the Past column.'
@@ -308,7 +343,18 @@ export function previewEvent(input) {
   }
 
   const dateValue = new Date(startsAt);
-  const countdown = formatCountdownText(dateValue.getTime() - Date.now());
+  const unixDiff = dateValue.getTime() - Date.now();
+
+  if (unixDiff <= 0) {
+    return {
+      title: title?.trim() || 'Untitled event',
+      source: `${time} ${timezone}`,
+      local: `Your local time: ${formatLocalTime(dateValue)}`,
+      countdown: 'Past event'
+    };
+  }
+
+  const countdown = formatCountdownText(unixDiff);
 
   return {
     title: title?.trim() || 'Untitled event',

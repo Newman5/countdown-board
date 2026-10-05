@@ -26,11 +26,18 @@ const state = {
   formOpen: false
 };
 
+let countdownTicker = null;
+
 function saveEvents() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.events));
 }
 
 function renderApp() {
+  if (countdownTicker) {
+    clearInterval(countdownTicker);
+    countdownTicker = null;
+  }
+
   app.innerHTML = `
     <div class="board-shell">
       <header class="topbar">
@@ -127,7 +134,7 @@ function renderApp() {
   const segmentButtons = document.querySelectorAll('.segment-button');
 
   categoryFilter.innerHTML = getCategories(state.events)
-    .map((category) => `<option value="${category}">${category}</option>`)
+    .map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`)
     .join('');
   categoryFilter.value = state.filter;
 
@@ -166,6 +173,41 @@ function renderApp() {
   eventList.innerHTML = filteredEvents
     .map((event) => renderEventCard(event))
     .join('');
+
+  const updateCountdownDisplay = () => {
+    const cards = eventList.querySelectorAll('.event-card');
+    let shouldRefresh = false;
+
+    cards.forEach((card) => {
+      const eventId = card.dataset.eventId;
+      const event = state.events.find((item) => item.id === eventId);
+      if (!event) {
+        return;
+      }
+
+      const diff = Date.parse(event.startsAt) - Date.now();
+      if (state.view === 'upcoming' && diff <= 0) {
+        shouldRefresh = true;
+      }
+
+      const countdown = formatCountdownParts(diff);
+      const countdownPrimary = card.querySelector('.countdown-primary');
+      const countdownSecondary = card.querySelector('.countdown-secondary');
+      const countdownLabel = card.querySelector('.countdown-label');
+      const countdownSubtitle = card.querySelector('.countdown-subtitle');
+      const summary = card.querySelector('.card-details p:last-child');
+
+      if (countdownPrimary) countdownPrimary.textContent = countdown.primary;
+      if (countdownSecondary) countdownSecondary.textContent = countdown.secondary;
+      if (countdownLabel) countdownLabel.textContent = countdown.primaryLabel;
+      if (countdownSubtitle) countdownSubtitle.textContent = countdown.secondaryLabel;
+      if (summary) summary.textContent = formatCountdownText(diff);
+    });
+
+    if (shouldRefresh) {
+      renderApp();
+    }
+  };
 
   categoryFilter.addEventListener('change', (event) => {
     state.filter = event.target.value;
@@ -253,6 +295,8 @@ function renderApp() {
       renderApp();
     });
   });
+
+  countdownTicker = setInterval(updateCountdownDisplay, 20000);
 }
 
 function getVisibleEvents() {
@@ -265,47 +309,74 @@ function getVisibleEvents() {
   return sortEvents(visible, state.sort);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeUrl(value) {
+  if (!value) {
+    return '';
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url.toString();
+    }
+  } catch (error) {
+    return '';
+  }
+
+  return '';
+}
+
 function renderEventCard(event) {
   const source = formatSourceTime(event.startsAt, event.timezone);
   const local = formatLocalTime(event.startsAt);
   const countdown = formatCountdownParts(Date.parse(event.startsAt) - Date.now());
   const isPast = isPastEvent(event);
-  const linkMarkup = event.url
-    ? `<a href="${event.url}" target="_blank" rel="noreferrer">Open link</a>`
+  const safeLink = safeUrl(event.url);
+  const linkMarkup = safeLink
+    ? `<a href="${escapeHtml(safeLink)}" target="_blank" rel="noreferrer">Open link</a>`
     : '';
 
   return `
-    <article class="event-card ${isPast ? 'is-past' : ''}">
+    <article class="event-card ${isPast ? 'is-past' : ''}" data-event-id="${escapeHtml(event.id)}">
       <div class="card-body">
         <div class="card-header">
           <div>
-            <p class="card-category">${event.category || 'General'}</p>
-            <h3>${event.title}</h3>
+            <p class="card-category">${escapeHtml(event.category || 'General')}</p>
+            <h3>${escapeHtml(event.title)}</h3>
           </div>
           <div class="event-actions">
-            <button type="button" class="icon-button" data-action="edit" data-id="${event.id}">Edit</button>
-            <button type="button" class="icon-button danger" data-action="delete" data-id="${event.id}">Delete</button>
+            <button type="button" class="icon-button" data-action="edit" data-id="${escapeHtml(event.id)}">Edit</button>
+            <button type="button" class="icon-button danger" data-action="delete" data-id="${escapeHtml(event.id)}">Delete</button>
           </div>
         </div>
 
         <div class="countdown-block">
-          <div class="countdown-primary">${countdown.primary}</div>
-          <div class="countdown-label">${countdown.primaryLabel}</div>
-          <div class="countdown-secondary">${countdown.secondary}</div>
-          <div class="countdown-subtitle">${countdown.secondaryLabel}</div>
+          <div class="countdown-primary">${escapeHtml(countdown.primary)}</div>
+          <div class="countdown-label">${escapeHtml(countdown.primaryLabel)}</div>
+          <div class="countdown-secondary">${escapeHtml(countdown.secondary)}</div>
+          <div class="countdown-subtitle">${escapeHtml(countdown.secondaryLabel)}</div>
         </div>
 
         <div class="card-time-meta">
-          <p>${source.timeLabel} ${source.zoneLabel}</p>
-          <p>Your time · ${local}</p>
+          <p>${escapeHtml(`${source.timeLabel} ${source.zoneLabel}`)}</p>
+          <p>Your time · ${escapeHtml(local)}</p>
         </div>
 
         <div class="card-details">
-          <p>${source.dayLabel}</p>
-          <p>${formatCountdownText(Date.parse(event.startsAt) - Date.now())}</p>
+          <p>${escapeHtml(source.dayLabel)}</p>
+          <p>${escapeHtml(formatCountdownText(Date.parse(event.startsAt) - Date.now()))}</p>
         </div>
 
-        ${event.notes ? `<p class="notes">${event.notes}</p>` : ''}
+        ${event.notes ? `<p class="notes">${escapeHtml(event.notes)}</p>` : ''}
         ${linkMarkup}
       </div>
     </article>
@@ -318,7 +389,7 @@ function populateTimezoneOptions() {
   const current = select.value || 'UTC';
 
   select.innerHTML = options
-    .map((timezone) => `<option value="${timezone}">${timezone}</option>`)
+    .map((timezone) => `<option value="${escapeHtml(timezone)}">${escapeHtml(timezone)}</option>`)
     .join('');
 
   if (options.includes(current)) {
@@ -363,4 +434,3 @@ function updatePreview() {
 }
 
 renderApp();
-setInterval(() => renderApp(), 20000);
